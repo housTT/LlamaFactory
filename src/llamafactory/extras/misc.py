@@ -36,6 +36,7 @@ from transformers.utils import (
 from transformers.utils.versions import require_version
 
 from . import logging
+from .tt import get_tt_compile_count, get_tt_device, get_tt_memory_info, is_torch_tt_available, tt_sync
 
 
 _is_fp16_available = is_torch_npu_available() or is_torch_cuda_available()
@@ -52,6 +53,30 @@ if TYPE_CHECKING:
 
 
 logger = logging.get_logger(__name__)
+
+
+class _TTDeviceNamespace:
+    r"""Minimal stand-in for `torch.cuda`-style device namespaces on Tenstorrent devices."""
+
+    @staticmethod
+    def set_device(index: int) -> None:
+        pass
+
+    @staticmethod
+    def empty_cache() -> None:
+        pass
+
+    @staticmethod
+    def synchronize() -> None:
+        tt_sync()
+
+    @staticmethod
+    def device_count() -> int:
+        return 1
+
+    @staticmethod
+    def compile_count() -> int:
+        return get_tt_compile_count()
 
 
 class AverageMeter:
@@ -143,6 +168,9 @@ def count_parameters(model: "torch.nn.Module") -> tuple[int, int]:
 
 def get_current_device() -> "torch.device":
     r"""Get the current available device."""
+    if is_torch_tt_available():
+        return get_tt_device()
+
     if is_torch_xpu_available():
         device = "xpu:{}".format(os.getenv("LOCAL_RANK", "0"))
     elif is_torch_npu_available():
@@ -159,6 +187,9 @@ def get_current_device() -> "torch.device":
 
 def get_device_name() -> str:
     r"""Get the name of available devices."""
+    if is_torch_tt_available():
+        return "tt"
+
     if is_torch_xpu_available():
         device = "xpu"
     elif is_torch_npu_available():
@@ -176,6 +207,9 @@ def get_device_name() -> str:
 def get_torch_device():
     r"""Get the torch device namespace for the available devices."""
     device_name = get_device_name()
+    if device_name == "tt":
+        return _TTDeviceNamespace()
+
     device_name = "cuda" if device_name == "gpu" else device_name
     try:
         return getattr(torch, device_name)
@@ -186,6 +220,9 @@ def get_torch_device():
 
 def get_device_count() -> int:
     r"""Get the number of available devices."""
+    if is_torch_tt_available():
+        return 1
+
     if is_torch_xpu_available():
         return torch.xpu.device_count()
     elif is_torch_npu_available():
@@ -207,6 +244,10 @@ def get_logits_processor() -> "LogitsProcessorList":
 
 def get_current_memory() -> tuple[int, int]:
     r"""Get the available and total memory for the current device (in Bytes)."""
+    if is_torch_tt_available():
+        used, total = get_tt_memory_info()
+        return max(total - used, 0), total
+
     if is_torch_xpu_available():
         return torch.xpu.mem_get_info()
     elif is_torch_npu_available():
@@ -221,6 +262,10 @@ def get_current_memory() -> tuple[int, int]:
 
 def get_peak_memory() -> tuple[int, int]:
     r"""Get the peak memory usage (allocated, reserved) for the current device (in Bytes)."""
+    if is_torch_tt_available():
+        used, _ = get_tt_memory_info()
+        return used, -1
+
     if is_torch_xpu_available():
         return torch.xpu.max_memory_allocated(), torch.xpu.max_memory_reserved()
     elif is_torch_npu_available():
@@ -240,6 +285,9 @@ def has_tokenized_data(path: "os.PathLike") -> bool:
 
 def infer_optim_dtype(model_dtype: Optional["torch.dtype"]) -> "torch.dtype":
     r"""Infer the optimal dtype according to the model_dtype and device compatibility."""
+    if is_torch_tt_available():
+        return torch.bfloat16 if model_dtype in [torch.bfloat16, None] else model_dtype
+
     if _is_bf16_available and (model_dtype == torch.bfloat16 or model_dtype is None):
         return torch.bfloat16
     elif _is_fp16_available:
@@ -251,7 +299,11 @@ def infer_optim_dtype(model_dtype: Optional["torch.dtype"]) -> "torch.dtype":
 def is_accelerator_available() -> bool:
     r"""Check if the accelerator is available."""
     return (
-        is_torch_xpu_available() or is_torch_npu_available() or is_torch_mps_available() or is_torch_cuda_available()
+        is_torch_tt_available()
+        or is_torch_xpu_available()
+        or is_torch_npu_available()
+        or is_torch_mps_available()
+        or is_torch_cuda_available()
     )
 
 
@@ -281,6 +333,9 @@ def skip_check_imports() -> None:
 def torch_gc() -> None:
     r"""Collect the device memory."""
     gc.collect()
+    if is_torch_tt_available():
+        return
+
     if is_torch_xpu_available():
         torch.xpu.empty_cache()
     elif is_torch_npu_available():

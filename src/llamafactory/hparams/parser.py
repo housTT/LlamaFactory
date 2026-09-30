@@ -35,6 +35,7 @@ from ..extras import logging
 from ..extras.constants import CHECKPOINT_NAMES, EngineName
 from ..extras.misc import check_dependencies, check_version, get_current_device, is_env_enabled
 from ..extras.packages import is_mcore_adapter_available, is_megatron_bridge_available
+from ..extras.tt import is_torch_tt_available, prepare_tt_training_args, setup_tt_environment
 from .data_args import DataArguments
 from .evaluation_args import EvaluationArguments
 from .finetuning_args import FinetuningArguments
@@ -393,6 +394,9 @@ def get_ray_args(args: dict[str, Any] | list[str] | None = None) -> RayArguments
 
 
 def get_train_args(args: dict[str, Any] | list[str] | None = None) -> _TRAIN_CLS:
+    if is_torch_tt_available():
+        setup_tt_environment()
+
     mb_args = None
     if is_env_enabled("USE_MCA"):
         model_args, data_args, training_args, finetuning_args, generating_args = _parse_train_mca_args(args)
@@ -496,7 +500,11 @@ def get_train_args(args: dict[str, Any] | list[str] | None = None) -> _TRAIN_CLS
         raise ValueError("Please use scripts/pissa_init.py to initialize PiSSA in DeepSpeed ZeRO-3.")
 
     if finetuning_args.pure_bf16:
-        if not (is_torch_bf16_gpu_available() or (is_torch_npu_available() and torch.npu.is_bf16_supported())):
+        if not (
+            is_torch_bf16_gpu_available()
+            or (is_torch_npu_available() and torch.npu.is_bf16_supported())
+            or is_torch_tt_available()
+        ):
             raise ValueError("This device does not support `pure_bf16`.")
 
         if is_deepspeed_zero3_enabled():
@@ -646,6 +654,8 @@ def get_train_args(args: dict[str, Any] | list[str] | None = None) -> _TRAIN_CLS
     model_args.device_map = {"": get_current_device()}
     model_args.model_max_length = data_args.cutoff_len
     model_args.block_diag_attn = data_args.neat_packing
+    if is_torch_tt_available():
+        prepare_tt_training_args(model_args, data_args, training_args, finetuning_args)
 
     # Log on each process the small summary
     logger.info(

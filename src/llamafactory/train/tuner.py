@@ -31,6 +31,7 @@ from ..extras.packages import (
     is_ray_available,
     is_transformers_version_greater_than,
 )
+from ..extras.tt import TTTrainingCallback, is_torch_tt_available
 from ..hparams import RayArguments, get_infer_args, get_ray_args, get_train_args, read_args
 from ..model import load_model, load_tokenizer
 from .callbacks import (
@@ -70,6 +71,9 @@ def _training_function(config: dict[str, Any]) -> None:
     args = config.get("args")
     callbacks: list[Any] = config.get("callbacks")
     model_args, data_args, training_args, finetuning_args, generating_args = get_train_args(args)
+
+    if is_torch_tt_available():
+        callbacks.append(TTTrainingCallback())
 
     callbacks.append(LogCallback())
     if finetuning_args.pissa_convert:

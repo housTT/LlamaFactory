@@ -1,0 +1,6 @@
+cache_dir: null
+hub_name: huggingface
+lang: en
+last_model: Llama-3.1-8B-Instruct
+path_dict:
+  Llama-3.1-8B-Instruct: meta-llama/Llama-3.1-8B-Instruct

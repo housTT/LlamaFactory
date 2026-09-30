@@ -72,6 +72,17 @@ def print_env() -> None:
         pass
 
     try:
+        import importlib.metadata
+
+        import torch_xla  # type: ignore
+
+        info["PyTorch/XLA version"] = torch_xla.__version__
+        info["Tenstorrent PJRT plugin version"] = importlib.metadata.version("pjrt-plugin-tt")
+        info["Tenstorrent visible devices"] = os.getenv("TT_VISIBLE_DEVICES", "all")
+    except Exception:
+        pass
+
+    try:
         import bitsandbytes  # type: ignore
 
         info["Bitsandbytes version"] = bitsandbytes.__version__

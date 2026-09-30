@@ -36,6 +36,7 @@ from ..extras import logging
 from ..extras.constants import IGNORE_INDEX, SWANLAB_CONFIG
 from ..extras.misc import get_device_name
 from ..extras.packages import is_apollo_available, is_galore_available, is_ray_available
+from ..extras.tt import create_tt_optimizer, is_torch_tt_available
 from ..hparams import FinetuningArguments, ModelArguments
 from ..model import find_all_linear_modules, load_model, load_tokenizer, load_valuehead_params
 
@@ -546,6 +547,9 @@ def create_custom_optimizer(
 
     if finetuning_args.use_muon:
         return _create_muon_optimizer(model, training_args)
+
+    if is_torch_tt_available() and training_args.optim in ["adamw_torch", "adamw_torch_fused"]:
+        return create_tt_optimizer(model, training_args)
 
 
 def create_custom_scheduler(

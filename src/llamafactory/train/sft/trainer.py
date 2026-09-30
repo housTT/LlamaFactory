@@ -28,6 +28,7 @@ from typing_extensions import override
 
 from ...extras import logging
 from ...extras.constants import IGNORE_INDEX
+from ...extras.tt import create_tt_scheduler, is_torch_tt_available
 from ..callbacks import SaveProcessorCallback
 from ..fp8_utils import configure_fp8_environment, patch_accelerator_for_fp8, verify_fp8_status
 from ..trainer_utils import create_custom_optimizer, create_custom_scheduler
@@ -138,6 +139,9 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         self, num_training_steps: int, optimizer: Optional["torch.optim.Optimizer"] = None
     ) -> "torch.optim.lr_scheduler.LRScheduler":
         create_custom_scheduler(self.args, num_training_steps, optimizer)
+        if is_torch_tt_available() and self.lr_scheduler is None:
+            self.lr_scheduler = create_tt_scheduler(self.args, num_training_steps, optimizer or self.optimizer)
+
         return super().create_scheduler(num_training_steps, optimizer)
 
     @override
